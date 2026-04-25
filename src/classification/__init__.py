@@ -1,10 +1,11 @@
 """Modulo de clasificacion multi-task de prendas."""
 
 from .model import MultiTaskFashionClassifier
-from .dataset import DeepFashionDataset, LABEL_MISSING
+from .train import evaluate, multi_task_loss, train_from_csv
 
 __all__ = [
     "MultiTaskFashionClassifier",
-    "DeepFashionDataset",
-    "LABEL_MISSING",
+    "evaluate",
+    "multi_task_loss",
+    "train_from_csv",
 ]

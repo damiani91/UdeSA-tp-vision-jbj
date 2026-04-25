@@ -1,6 +1,15 @@
-"""Modulo de reconocimiento de marca."""
+"""Modulo de clasificacion de marca sobre Logo-2K+."""
 
-from .detector import LogoDetector
-from .classifier import BrandClassifier
+from .classifier import BrandClassifier, BrandPredictor
+from .dataset import LogoDataset, collect_samples, discover_brands
+from .train import evaluate, train_brand
 
-__all__ = ["LogoDetector", "BrandClassifier"]
+__all__ = [
+    "BrandClassifier",
+    "BrandPredictor",
+    "LogoDataset",
+    "collect_samples",
+    "discover_brands",
+    "evaluate",
+    "train_brand",
+]

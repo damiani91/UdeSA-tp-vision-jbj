@@ -16,6 +16,7 @@ env/
 # Data (too large for git)
 data/raw/
 data/processed/
+data/preprocessed/ 
 data/splits/
 
 # Model checkpoints

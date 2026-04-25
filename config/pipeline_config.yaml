@@ -1,37 +1,48 @@
 # === Configuracion general ===
-device: "cpu"  # "cuda" para GPU en Colab
+device: "cuda"  # "cpu" si no hay GPU. En Colab default cuda.
 seed: 42
-image_size: [512, 512]  # Resize de entrada para todo el pipeline
+image_size: [224, 224]
+log_level: "INFO"
 
-# === Paths ===
+# === Paths (sobreescribibles por colab.setup_paths) ===
 paths:
   raw_data: "data/raw"
-  processed_data: "data/processed"
+  preprocessed_data: "data/preprocessed"
+  images_pants: "data/images/pants"
+  images_tops: "data/images/tops"
   splits: "data/splits"
+  models: "models"
   outputs: "outputs"
-  models: "models"  # Checkpoints guardados
+
+# === CSV sources ===
+data:
+  pants_csv: "data/preprocessed/pants_1.csv"
+  tops_csv: "data/preprocessed/tops_1.csv"
+  logo_dir: "data/preprocessed/Logo-2K+/Clothes"
+  download:
+    workers: 8
+    timeout: 15
+    max_retries: 3
+    backoff_factor: 1.5
+  splits:
+    train_ratio: 0.70
+    val_ratio: 0.15
+    test_ratio: 0.15
+    stratify_col: "color_family"
+    min_samples_per_class: 3
 
 # === Modulo 1: Segmentacion ===
 segmentation:
   model_name: "mattmdjaga/segformer_b2_clothes"
   confidence_threshold: 0.5
-  # Categorias de prendas a segmentar
   target_categories:
     - "upper_body"
     - "lower_body"
     - "full_body"
-    - "footwear"
-    - "accessories"
-  # Fine-tuning
-  finetune:
-    enabled: true
-    dataset: "modanet"
-    epochs: 15
-    batch_size: 8
-    learning_rate: 6.0e-5
-    weight_decay: 0.01
-    scheduler: "cosine"
-    early_stopping_patience: 3
+  routing:
+    upper_body_label: "tops"
+    lower_body_label: "pants"
+    full_body_fallback: "tops"
 
 # === Modulo 2: Extraccion de color ===
 color:
@@ -44,65 +55,105 @@ color:
     enabled: true
     classes: ["liso", "rayas", "cuadros", "estampado", "floral", "geometrico"]
 
-# === Modulo 3: Clasificacion multi-task ===
-classification:
+# === Modulo 3a: Clasificador PANTS ===
+pants:
   backbone: "google/vit-base-patch16-224"
-  freeze_backbone_epochs: 3
+  checkpoint: "models/best_pants.pth"
   heads:
-    tipo:
-      classes: ["remera", "camisa", "campera", "pantalon", "jean", "short",
-                "falda", "vestido", "buzo", "sweater", "blazer", "tapado",
-                "zapatilla", "bota", "sandalia", "cartera", "mochila"]
+    color_family:
+      classes: ["neutrals_dark", "neutrals_light", "blues", "reds", "greens",
+                "yellows", "purples", "oranges", "browns", "metallics", "otro"]
       weight: 1.0
-    estilo:
-      classes: ["casual", "formal", "sport", "bohemio", "minimalista",
-                "streetwear", "clasico", "romantico"]
+    pattern:
+      classes: ["liso", "rayas", "cuadros", "estampado", "geometrico", "otro"]
+      weight: 1.0
+    fit_silhouette:
+      classes: ["slim", "regular", "relaxed", "wide", "skinny", "otro"]
+      weight: 0.9
+    fabric_content:
+      classes: ["algodon", "denim", "sintetico", "punto", "lino", "lana", "cuero", "otro"]
       weight: 0.8
-    fit:
-      classes: ["slim", "regular", "oversized", "bodycon", "relaxed"]
+    dressing_syle:
+      classes: ["minimalista", "clasico", "casual", "sport", "formal", "streetwear", "otro"]
       weight: 0.7
-    cuello:
-      classes: ["redondo", "en_v", "cuello_alto", "sin_cuello", "polo",
-                "cuadrado", "barco"]
-      weight: 0.5
-    manga:
-      classes: ["sin_manga", "manga_corta", "manga_larga", "manga_34",
-                "tirantes"]
-      weight: 0.5
-    material:
-      classes: ["algodon", "denim", "cuero", "punto", "seda", "lino",
-                "sintetico", "lana"]
+    waist_rise:
+      classes: ["mid_rise", "high_rise", "low_rise", "otro"]
       weight: 0.6
   training:
-    dataset: "deepfashion"
-    epochs: 25
+    epochs: 15
     batch_size: 32
     learning_rate: 3.0e-4
     weight_decay: 0.01
-    scheduler: "cosine_with_warmup"
-    warmup_ratio: 0.1
+    freeze_backbone_epochs: 3
     label_smoothing: 0.1
+    use_class_weights: true
+    early_stopping_patience: 4
     augmentation:
       horizontal_flip: true
       color_jitter: true
       random_crop: true
-      random_rotation: 15
+      random_rotation: 10
 
-# === Modulo 4: Reconocimiento de marca ===
-brand:
-  detector:
-    model: "yolov8m"
-    confidence_threshold: 0.4
-    iou_threshold: 0.5
-  classifier:
-    target_brands: ["nike", "adidas", "zara", "h&m", "uniqlo", "levis",
-                    "lacoste", "tommy_hilfiger", "ralph_lauren", "gucci"]
-    model: "efficientnet_b0"
+# === Modulo 3b: Clasificador TOPS ===
+tops:
+  backbone: "google/vit-base-patch16-224"
+  checkpoint: "models/best_tops.pth"
+  heads:
+    color_family:
+      classes: ["neutrals_dark", "neutrals_light", "blues", "reds", "greens",
+                "yellows", "purples", "oranges", "browns", "metallics", "otro"]
+      weight: 1.0
+    pattern:
+      classes: ["liso", "rayas", "cuadros", "estampado", "floral", "geometrico", "otro"]
+      weight: 1.0
+    fit_silhouette:
+      classes: ["slim", "regular", "relaxed", "oversized", "fitted", "otro"]
+      weight: 0.9
+    fabric_content:
+      classes: ["algodon", "punto", "sintetico", "lino", "seda", "lana", "otro"]
+      weight: 0.8
+    dressing_syle:
+      classes: ["minimalista", "clasico", "casual", "sport", "formal", "streetwear", "bohemio", "romantico", "otro"]
+      weight: 0.7
+    neck_style:
+      classes: ["redondo", "en_v", "polo", "cuello_alto", "cuadrado", "barco", "sin_cuello", "otro"]
+      weight: 0.6
   training:
-    dataset: "logo2kplus"
+    epochs: 15
+    batch_size: 32
+    learning_rate: 3.0e-4
+    weight_decay: 0.01
+    freeze_backbone_epochs: 3
+    label_smoothing: 0.1
+    use_class_weights: true
+    early_stopping_patience: 4
+    augmentation:
+      horizontal_flip: true
+      color_jitter: true
+      random_crop: true
+      random_rotation: 10
+
+# === Modulo 4: Brand classification (Logo-2K+) ===
+brand:
+  model: "efficientnet_b0"
+  checkpoint: "models/best_brand.pth"
+  classes_source: "data/preprocessed/Logo-2K+/Clothes"
+  confidence_threshold: 0.6  # debajo de esto -> "sin_marca"
+  unknown_label: "sin_marca"
+  training:
     epochs: 20
-    batch_size: 16
+    batch_size: 32
+    image_size: 224
     learning_rate: 1.0e-3
+    weight_decay: 0.01
+    freeze_backbone_epochs: 5
+    label_smoothing: 0.1
+    early_stopping_patience: 4
+    val_ratio: 0.15
+    augmentation:
+      horizontal_flip: true
+      color_jitter: true
+      random_rotation: 15
 
 # === Pipeline (orquestador) ===
 pipeline:
@@ -111,5 +162,10 @@ pipeline:
   run_classification: true
   run_brand: true
   output_format: "json"
-  save_intermediate: true
+  save_intermediate: false
   confidence_threshold: 0.5
+
+# === Colab ===
+colab:
+  drive_root: "/content/drive/MyDrive/master_ia/fashion-extraction"
+  auto_setup: true

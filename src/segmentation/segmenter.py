@@ -145,3 +145,16 @@ class FashionSegmenter:
         return np.isin(
             segmentation_map, DEFAULT_LABEL_MAP[best_cat]
         ).astype(np.uint8)
+
+    def get_dominant_category(self, segmentation_map: np.ndarray) -> Optional[str]:
+        """Retorna el nombre de la categoria con mayor area, o None si vacia."""
+        best_cat = None
+        best_area = 0
+        for cat, ids in DEFAULT_LABEL_MAP.items():
+            if cat not in self.target_categories:
+                continue
+            area = int(np.isin(segmentation_map, ids).sum())
+            if area > best_area:
+                best_area = area
+                best_cat = cat
+        return best_cat

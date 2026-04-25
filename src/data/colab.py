@@ -66,17 +66,11 @@ def _rewrite_paths(config: dict, drive_root: str | Path) -> dict:
             if key in data:
                 rel = Path(data[key])
                 data[key] = str(drive_root / rel)
-        if "logo_dir" in data:
-            data["logo_dir"] = str(drive_root / Path(data["logo_dir"]))
 
-    for key in ["pants", "tops", "brand"]:
+    for key in ["pants", "tops"]:
         if key in config and "checkpoint" in config[key]:
             rel = Path(config[key]["checkpoint"])
             config[key]["checkpoint"] = str(drive_root / rel)
-
-    if "brand" in config and "classes_source" in config["brand"]:
-        rel = Path(config["brand"]["classes_source"])
-        config["brand"]["classes_source"] = str(drive_root / rel)
 
     return config
 

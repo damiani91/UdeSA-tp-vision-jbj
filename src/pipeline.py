@@ -4,7 +4,6 @@ El pipeline procesa una imagen y produce un JSON con:
     - Segmentacion (mascara de la prenda + categoria dominante)
     - Color (paleta dominante + patron)
     - Atributos del clasificador (pants o tops segun routing)
-    - Marca (Logo-2K+)
 """
 
 from __future__ import annotations
@@ -62,7 +61,6 @@ class FashionPipeline:
         self.run_segmentation = bool(pipe_cfg.get("run_segmentation", True))
         self.run_color = bool(pipe_cfg.get("run_color", True))
         self.run_classification = bool(pipe_cfg.get("run_classification", True))
-        self.run_brand = bool(pipe_cfg.get("run_brand", True))
         self.save_intermediate = bool(pipe_cfg.get("save_intermediate", False))
         self.confidence_threshold = float(pipe_cfg.get("confidence_threshold", 0.5))
 
@@ -78,7 +76,6 @@ class FashionPipeline:
         self.color_extractor = None
         self.pants_classifier = None
         self.tops_classifier = None
-        self.brand_predictor = None
 
         routing = self.config.get("segmentation", {}).get("routing", {})
         self.upper_label = routing.get("upper_body_label", "tops")
@@ -128,25 +125,6 @@ class FashionPipeline:
         if self.run_classification:
             self.pants_classifier = self._load_classifier("pants")
             self.tops_classifier = self._load_classifier("tops")
-
-        if self.run_brand:
-            try:
-                from src.brand.classifier import BrandPredictor
-                ckpt = Path(self.config["brand"].get("checkpoint", "models/best_brand.pth"))
-                if ckpt.exists():
-                    self.brand_predictor = BrandPredictor(
-                        ckpt,
-                        device=str(self.device),
-                        confidence_threshold=self.config["brand"].get(
-                            "confidence_threshold", 0.6),
-                        unknown_label=self.config["brand"].get(
-                            "unknown_label", "sin_marca"),
-                    )
-                    logger.info("BrandPredictor cargado desde %s", ckpt)
-                else:
-                    logger.warning("Sin checkpoint de brand en %s, deshabilitado.", ckpt)
-            except Exception as exc:
-                logger.error("Fallo al cargar brand predictor: %s", exc)
 
     def _route_classifier(self, dominant_category: Optional[str]) -> tuple[Optional[str], Optional[Any]]:
         """Decide que clasificador usar segun la categoria de segmentacion."""
@@ -262,15 +240,6 @@ class FashionPipeline:
             else:
                 result["garment_type"] = None
                 result["attributes"] = {}
-
-        # 4. Marca
-        if self.run_brand and self.brand_predictor is not None:
-            try:
-                rgb_for_brand = segmented_img.convert("RGB") if segmented_img.mode != "RGB" else segmented_img
-                result["brand"] = self.brand_predictor.predict(rgb_for_brand)
-            except Exception as exc:
-                logger.error("Error en brand: %s", exc)
-                result["brand"] = {"error": str(exc)}
 
         result["processing_time_ms"] = int((time.time() - t0) * 1000)
         return result

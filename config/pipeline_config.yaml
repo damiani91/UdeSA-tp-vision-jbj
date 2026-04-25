@@ -18,7 +18,6 @@ paths:
 data:
   pants_csv: "data/preprocessed/pants_1.csv"
   tops_csv: "data/preprocessed/tops_1.csv"
-  logo_dir: "data/preprocessed/Logo-2K+/Clothes"
   download:
     workers: 8
     timeout: 15
@@ -133,34 +132,11 @@ tops:
       random_crop: true
       random_rotation: 10
 
-# === Modulo 4: Brand classification (Logo-2K+) ===
-brand:
-  model: "efficientnet_b0"
-  checkpoint: "models/best_brand.pth"
-  classes_source: "data/preprocessed/Logo-2K+/Clothes"
-  confidence_threshold: 0.6  # debajo de esto -> "sin_marca"
-  unknown_label: "sin_marca"
-  training:
-    epochs: 20
-    batch_size: 32
-    image_size: 224
-    learning_rate: 1.0e-3
-    weight_decay: 0.01
-    freeze_backbone_epochs: 5
-    label_smoothing: 0.1
-    early_stopping_patience: 4
-    val_ratio: 0.15
-    augmentation:
-      horizontal_flip: true
-      color_jitter: true
-      random_rotation: 15
-
 # === Pipeline (orquestador) ===
 pipeline:
   run_segmentation: true
   run_color: true
   run_classification: true
-  run_brand: true
   output_format: "json"
   save_intermediate: false
   confidence_threshold: 0.5

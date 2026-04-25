@@ -1,6 +1,6 @@
 # Fashion Feature Extraction Pipeline
 
-Pipeline de extracción de atributos visuales de prendas de moda. Recibe una imagen y produce un JSON estructurado con tipo, color, estilo, fit, material, marca y otros atributos. Pensado para alimentar un sistema de recomendación downstream.
+Pipeline de extracción de atributos visuales de prendas de moda. Recibe una imagen y produce un JSON estructurado con tipo, color, estilo, fit, material y otros atributos. Pensado para alimentar un sistema de recomendación downstream.
 
 ## Arquitectura
 
@@ -10,13 +10,13 @@ Imagen
    v
 [1. Segmentación]  SegFormer -> máscara + categoría dominante
    |
-   +-------+--------+----------+
-   v       v        v          v
-[2. Color] [3a. Pants]  [3b. Tops]  [4. Brand]
- K-Means    ViT multi-   ViT multi-  EfficientNet-B0
- LAB        task         task        sobre Logo-2K+
-   |        |            |           |
-   +--------+--+---+-----+-----------+
+   +-------+--------+
+   v                v
+[2. Color]   [3a. Pants] / [3b. Tops]
+ K-Means      ViT multi-task (routing por categoría)
+ LAB
+   |          |
+   +----------+
               v
         JSON estructurado
 ```
@@ -27,7 +27,6 @@ El **routing entre `pants` y `tops`** se decide en base a la categoría dominant
 
 - **`data/preprocessed/pants_1.csv`** — 41.868 pantalones de Abercrombie con URL + 7 atributos
 - **`data/preprocessed/tops_1.csv`** — 78.686 prendas superiores de Macy's con URL + 7 atributos
-- **`data/preprocessed/Logo-2K+/Clothes/`** — 113 marcas en formato ImageFolder
 
 Atributos comunes: `color_family`, `pattern`, `fit_silhouette`, `fabric_content`, `dressing_syle`. Exclusivos: `waist_rise` (pants), `neck_style` (tops). Los CSV traen los labels en inglés; el módulo `src/data/mappings.py` los traduce a la ontología en español del config.
 
@@ -43,13 +42,11 @@ fashion-feature-extraction/
 │   ├── segmentation/                   # SegFormer
 │   ├── color/                          # K-Means en LAB + naming
 │   ├── classification/                 # ViT multi-task (pants y tops)
-│   ├── brand/                          # EfficientNet-B0 sobre Logo-2K+
 │   └── pipeline.py                     # Orquestador con auto-routing
 ├── scripts/
 │   ├── download_images.py              # Descarga paralela desde CSV
 │   ├── prepare_splits.py               # Splits train/val/test estratificados
 │   ├── train_pants.py / train_tops.py  # Entrenamiento clasificadores
-│   ├── train_brand.py                  # Entrenamiento brand
 │   └── evaluate.py                     # Evaluación contra ground truth
 ├── tests/                              # pytest sin GPU ni red
 └── notebooks/
@@ -57,7 +54,6 @@ fashion-feature-extraction/
     ├── 02_prepare_data_colab.ipynb     # Drive + descarga + splits
     ├── 03_train_pants_colab.ipynb      # Training pants
     ├── 04_train_tops_colab.ipynb       # Training tops
-    ├── 05_train_brand_colab.ipynb      # Training brand
     └── 06_full_pipeline_demo.ipynb     # Demo end-to-end
 ```
 
@@ -81,16 +77,15 @@ Genera class weights, splits sugeridos, mapeos EN→ES y detecta long-tail.
 
 ### 2. Preparación de datos (Colab)
 
-Subí a Drive: `data/preprocessed/{pants_1.csv, tops_1.csv, Logo-2K+/}` y el código del repo.
+Subí a Drive: `data/preprocessed/{pants_1.csv, tops_1.csv}` y el código del repo.
 
 Ejecutá `notebooks/02_prepare_data_colab.ipynb`. Descarga ~30k imágenes en paralelo (cache idempotente con hash MD5 de URLs) y arma splits estratificados.
 
 ### 3. Entrenamiento (Colab, T4 ~12h gratuitas)
 
-Ejecutá los tres notebooks en orden:
+Ejecutá los dos notebooks en orden:
 - `03_train_pants_colab.ipynb` — clasificador ViT multi-task para pantalones (6 heads)
 - `04_train_tops_colab.ipynb` — idem para prendas superiores (6 heads)
-- `05_train_brand_colab.ipynb` — EfficientNet-B0 para 113 marcas
 
 Cada training:
 - Dos fases: backbone congelado → descongelado con learning rates discriminativos
@@ -124,7 +119,7 @@ Compara predicciones contra ground truth (con mapeo EN→ES aplicado).
 pytest tests/ -v
 ```
 
-Los tests no requieren GPU ni red (usan fixtures dummy). Cubren mappings, downloader, csv_dataset, splits, color, segmentación post-process y brand.
+Los tests no requieren GPU ni red (usan fixtures dummy). Cubren mappings, downloader, csv_dataset, splits, color y segmentación post-process.
 
 ## Configuración Colab
 
@@ -138,7 +133,7 @@ Estructura sugerida en Drive:
 ```
 /content/drive/MyDrive/master_ia/fashion-extraction/
 ├── code/                    # Copia del repo (o clonalo desde GitHub)
-├── data/preprocessed/       # CSVs + Logo-2K+
+├── data/preprocessed/       # CSVs
 ├── data/images/{pants,tops}/  # Cache de descargas
 ├── data/splits/             # CSVs train/val/test
 ├── models/                  # Checkpoints
@@ -149,6 +144,6 @@ Estructura sugerida en Drive:
 
 - **Dos modelos separados** (pants vs tops): cada uno con un head exclusivo (`waist_rise` / `neck_style`) y heads compartidas. Más simple que un modelo unificado y aprovecha la asimetría del dataset.
 - **Routing por segmentación**: SegFormer ya distingue upper_body vs lower_body, así que reusamos esa señal en lugar de un clasificador binario adicional.
-- **Brand sin detección**: Logo-2K+ no incluye bounding boxes, así que se entrena como clasificación pura sobre la imagen segmentada.
+- **Marca fuera del scope del POC**: el dataset disponible (Logo-2K+) tiene logos aislados, no logos sobre prendas, y sin bounding boxes. Clasificar marca confiable sobre prendas reales requiere otro pipeline; queda como follow-up si aparecen datos con bboxes.
 - **Cache idempotente**: descargas con `md5(url).jpg` como filename. Permite reanudar sin perder progreso.
 - **`ignore_index=-1` en la loss**: las imágenes con labels faltantes o no mapeables no contribuyen al gradient de esa head, pero sí a las otras.

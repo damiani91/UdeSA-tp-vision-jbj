@@ -17,6 +17,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.data.csv_dataset import LABEL_MISSING, CSVImageDataset
+from src.data.io import open_any, save_torch_any
 from src.classification.model import MultiTaskFashionClassifier
 
 logger = logging.getLogger(__name__)
@@ -190,8 +191,12 @@ def train_from_csv(
     )
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_epochs)
 
-    ckpt_path = Path(model_cfg.get("checkpoint", f"models/best_{dataset_key}.pth"))
-    ckpt_path.parent.mkdir(parents=True, exist_ok=True)
+    ckpt_raw = model_cfg.get("checkpoint", f"models/best_{dataset_key}.pth")
+    if str(ckpt_raw).startswith("gs://"):
+        ckpt_path = ckpt_raw
+    else:
+        ckpt_path = Path(ckpt_raw)
+        ckpt_path.parent.mkdir(parents=True, exist_ok=True)
 
     best_metric = -1.0
     patience_counter = 0
@@ -251,7 +256,7 @@ def train_from_csv(
         if mean_f1 > best_metric:
             best_metric = mean_f1
             patience_counter = 0
-            torch.save({
+            save_torch_any({
                 "model_state": model.state_dict(),
                 "head_config": head_config,
                 "backbone_name": model_cfg.get("backbone"),
@@ -266,8 +271,9 @@ def train_from_csv(
                 break
 
     if history_path is not None:
-        Path(history_path).parent.mkdir(parents=True, exist_ok=True)
-        with open(history_path, "w") as f:
+        if not str(history_path).startswith("gs://"):
+            Path(history_path).parent.mkdir(parents=True, exist_ok=True)
+        with open_any(history_path, "w") as f:
             json.dump(history, f, indent=2)
 
     return {

@@ -12,6 +12,13 @@ from sklearn.model_selection import train_test_split
 logger = logging.getLogger(__name__)
 
 
+def _join(base: str | Path, name: str) -> str | Path:
+    """Une base + name respetando el esquema gs:// (Path los destruye)."""
+    if str(base).startswith("gs://"):
+        return f"{str(base).rstrip('/')}/{name}"
+    return Path(base) / name
+
+
 def generate_splits(
     csv_path: str | Path,
     output_dir: str | Path,
@@ -48,8 +55,9 @@ def generate_splits(
 
     df = pd.read_csv(csv_path)
     name_prefix = name_prefix or Path(csv_path).stem
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    if not str(output_dir).startswith("gs://"):
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
 
     n_orig = len(df)
 
@@ -82,9 +90,9 @@ def generate_splits(
     )
 
     paths = {
-        "train": output_dir / f"{name_prefix}_train.csv",
-        "val": output_dir / f"{name_prefix}_val.csv",
-        "test": output_dir / f"{name_prefix}_test.csv",
+        "train": _join(output_dir, f"{name_prefix}_train.csv"),
+        "val": _join(output_dir, f"{name_prefix}_val.csv"),
+        "test": _join(output_dir, f"{name_prefix}_test.csv"),
     }
     df_train.to_csv(paths["train"], index=False)
     df_val.to_csv(paths["val"], index=False)

@@ -122,3 +122,68 @@ def ensure_repo_in_path(repo_dir: str | Path) -> None:
     if repo_dir not in sys.path:
         sys.path.insert(0, repo_dir)
         logger.info("Agregado al PYTHONPATH: %s", repo_dir)
+
+
+def setup_gcp(
+    config_path: str | Path,
+    bucket: str = "gs://jbj-vision",
+    local_cache_root: str = "/content/cache",
+    authenticate: bool = True,
+) -> dict:
+    """Setup para Colab Enterprise / Vertex AI con GCS como almacenamiento.
+
+    Reescribe los paths del config para que apunten al bucket GCS, excepto
+    los directorios de imagenes (que quedan locales para performance de training).
+
+    Args:
+        config_path: Path al YAML de config (relativo al repo).
+        bucket: URI del bucket GCS, sin slash final.
+        local_cache_root: Directorio local para cache de imagenes.
+        authenticate: Si True, intenta autenticar via google.colab.auth.
+
+    Returns:
+        Dict de config con paths ajustados.
+    """
+    if authenticate:
+        try:
+            from google.colab import auth  # type: ignore
+            auth.authenticate_user()
+            logger.info("Autenticacion GCP exitosa.")
+        except ImportError:
+            logger.info("google.colab.auth no disponible, asumiendo auth via service account.")
+
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+
+    bucket = bucket.rstrip("/")
+
+    if "paths" in config:
+        gcs_paths = {
+            "raw_data": f"{bucket}/data/raw",
+            "preprocessed_data": f"{bucket}/data/preprocessed",
+            "splits": f"{bucket}/data/splits",
+            "models": f"{bucket}/models",
+            "outputs": f"{bucket}/outputs",
+        }
+        local_paths = {
+            "images_pants": f"{local_cache_root}/images/pants",
+            "images_tops": f"{local_cache_root}/images/tops",
+        }
+        config["paths"].update(gcs_paths)
+        config["paths"].update(local_paths)
+
+    if "data" in config:
+        stem = config["data"].get("pants_csv", "data/preprocessed/pants_1.csv")
+        config["data"]["pants_csv"] = f"{bucket}/data/preprocessed/{Path(stem).name}"
+        stem = config["data"].get("tops_csv", "data/preprocessed/tops_1.csv")
+        config["data"]["tops_csv"] = f"{bucket}/data/preprocessed/{Path(stem).name}"
+
+    for key in ["pants", "tops"]:
+        if key in config:
+            config[key]["checkpoint"] = f"{bucket}/models/best_{key}.pth"
+
+    for local_path in local_paths.values():
+        Path(local_path).mkdir(parents=True, exist_ok=True)
+
+    logger.info("Setup GCP completo. Bucket: %s, cache local: %s", bucket, local_cache_root)
+    return config

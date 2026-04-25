@@ -22,6 +22,8 @@ import yaml
 from PIL import Image
 from tqdm import tqdm
 
+from src.data.io import load_torch_any
+
 logger = logging.getLogger(__name__)
 
 PIPELINE_VERSION = "0.2.0"
@@ -91,11 +93,14 @@ class FashionPipeline:
         model_cfg = self.config.get(key, {})
         if not model_cfg:
             return None
-        ckpt_path = Path(model_cfg.get("checkpoint", f"models/best_{key}.pth"))
+        ckpt_raw = model_cfg.get("checkpoint", f"models/best_{key}.pth")
+        ckpt_is_gcs = str(ckpt_raw).startswith("gs://")
+        ckpt_path = ckpt_raw if ckpt_is_gcs else Path(ckpt_raw)
         try:
             model = MultiTaskFashionClassifier.from_config(model_cfg, pretrained=False)
-            if ckpt_path.exists():
-                state = torch.load(ckpt_path, map_location="cpu")
+            ckpt_exists = True if ckpt_is_gcs else Path(ckpt_path).exists()
+            if ckpt_exists:
+                state = load_torch_any(ckpt_path, map_location="cpu")
                 model.load_state_dict(state["model_state"])
                 logger.info("Clasificador %s cargado desde %s", key, ckpt_path)
             else:

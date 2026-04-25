@@ -159,7 +159,8 @@ def download_csv_images(
     log = downloader.download_many(urls, desc=f"Descargando {Path(csv_path).stem}")
 
     if log_path is not None:
-        Path(log_path).parent.mkdir(parents=True, exist_ok=True)
+        if not str(log_path).startswith("gs://"):
+            Path(log_path).parent.mkdir(parents=True, exist_ok=True)
         log.to_csv(log_path, index=False)
         logger.info("Log de descarga: %s", log_path)
     return log

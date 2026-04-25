@@ -32,6 +32,11 @@ pycocotools>=2.0  # Para ModaNet (formato COCO)
 jupyter>=1.0
 ipywidgets>=8.0
 
+# Google Cloud Storage
+gcsfs>=2023.10
+fsspec>=2023.10
+google-cloud-storage>=2.10
+
 # Testing
 pytest>=7.0
 pytest-cov>=4.0

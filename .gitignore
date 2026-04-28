@@ -18,6 +18,7 @@ data/raw/
 data/processed/
 data/preprocessed/ 
 data/splits/
+data/images/
 
 # Model checkpoints
 models/

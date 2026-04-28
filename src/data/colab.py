@@ -187,3 +187,64 @@ def setup_gcp(
 
     logger.info("Setup GCP completo. Bucket: %s, cache local: %s", bucket, local_cache_root)
     return config
+
+
+def setup_local(
+    config_path: str | Path = "config/pipeline_config.yaml",
+    repo_root: str | Path | None = None,
+) -> dict:
+    """Setup para ejecución local sin Colab ni GCS.
+
+    Lee el YAML de config y reescribe todos los paths para que apunten
+    al filesystem local usando ``repo_root`` como base.
+
+    Args:
+        config_path: Path al YAML de config (relativo al repo_root).
+        repo_root: Raiz del repositorio. Si None, se detecta
+            automáticamente subiendo desde este archivo.
+
+    Returns:
+        Dict de config con paths locales absolutos.
+    """
+    if repo_root is None:
+        # src/data/colab.py → subimos 3 niveles para llegar a la raíz del repo
+        repo_root = Path(__file__).resolve().parent.parent.parent
+
+    repo_root = Path(repo_root).resolve()
+    config_full = repo_root / config_path
+
+    with open(config_full) as f:
+        config = yaml.safe_load(f)
+
+    # Reescribir paths como absolutos locales
+    if "paths" in config:
+        rewrites = {
+            "raw_data": "data/raw",
+            "preprocessed_data": "data/preprocessed",
+            "images_pants": "data/images/pants",
+            "images_tops": "data/images/tops",
+            "splits": "data/splits",
+            "models": "models",
+            "outputs": "outputs",
+        }
+        for key, rel in rewrites.items():
+            config["paths"][key] = str(repo_root / rel)
+
+    # Reescribir CSV paths
+    if "data" in config:
+        for key in ["pants_csv", "tops_csv"]:
+            if key in config["data"]:
+                config["data"][key] = str(repo_root / config["data"][key])
+
+    # Reescribir checkpoint paths
+    for key in ["pants", "tops"]:
+        if key in config and "checkpoint" in config[key]:
+            config[key]["checkpoint"] = str(repo_root / config[key]["checkpoint"])
+
+    # Crear directorios
+    if "paths" in config:
+        for sub in config["paths"].values():
+            Path(sub).mkdir(parents=True, exist_ok=True)
+
+    logger.info("Setup local completo. Repo root: %s", repo_root)
+    return config
